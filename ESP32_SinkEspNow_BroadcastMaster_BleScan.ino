@@ -1,152 +1,97 @@
 /*
-    ESP-NOW Broadcast Master
-    Lucas Saavedra Vaz - 2024
-
-    This sketch demonstrates how to broadcast messages to all devices within the ESP-NOW network.
-    This example is intended to be used with the ESP-NOW Broadcast Slave example.
-
-    The master device will broadcast a message every 5 seconds to all devices within the network.
-    This will be done using by registering a peer object with the broadcast address.
-
-    The slave devices will receive the broadcasted messages and print them to the Serial Monitor.
+    ESP-NOW Master Receiver
+    Le master reçoit les informations BLE envoyées par le slave
 */
 
 #include "ESP32_NOW.h"
 #include "WiFi.h"
-
-#include <esp_mac.h>  // For the MAC2STR and MACSTR macros
-
-#include <BLEDevice.h>
-#include <BLEUtils.h>
-#include <BLEScan.h>
-#include <BLEAdvertisedDevice.h>
-
-int scanTime = 10; // in seconds
-BLEScan* pBLEScan;
-
-
+#include <esp_mac.h>
+#include <vector>
 
 /* Definitions */
-
 #define ESPNOW_WIFI_CHANNEL 6
 
+// IMPORTANT: Remplacez par l'adresse MAC de votre SLAVE
+uint8_t slaveAddress[] = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF}; // À MODIFIER !
+
 /* Classes */
-
-// Creating a new class that inherits from the ESP_NOW_Peer class is required.
-
-class ESP_NOW_Broadcast_Peer : public ESP_NOW_Peer {
+class ESP_NOW_Slave_Peer : public ESP_NOW_Peer {
 public:
-  // Constructor of the class using the broadcast address
-  ESP_NOW_Broadcast_Peer(uint8_t channel, wifi_interface_t iface, const uint8_t *lmk) : ESP_NOW_Peer(ESP_NOW.BROADCAST_ADDR, channel, iface, lmk) {}
+  ESP_NOW_Slave_Peer(const uint8_t *mac_addr, uint8_t channel, wifi_interface_t iface, const uint8_t *lmk) 
+    : ESP_NOW_Peer(mac_addr, channel, iface, lmk) {}
 
-  // Destructor of the class
-  ~ESP_NOW_Broadcast_Peer() {
-    remove();
-  }
+  ~ESP_NOW_Slave_Peer() {}
 
-  // Function to properly initialize the ESP-NOW and register the broadcast peer
-  bool begin() {
-    if (!ESP_NOW.begin() || !add()) {
-      log_e("Failed to initialize ESP-NOW or register the broadcast peer");
+  bool add_peer() {
+    if (!add()) {
+      log_e("Failed to register the slave peer");
       return false;
     }
     return true;
   }
 
-  // Function to send a message to all devices within the network
-  bool send_message(const uint8_t *data, size_t len) {
-    if (!send(data, len)) {
-      log_e("Failed to broadcast message");
-      return false;
-    }
-    return true;
+  void onReceive(const uint8_t *data, size_t len, bool broadcast) {
+    Serial.println("\n=== Message from Slave ===");
+    Serial.printf("Slave MAC: " MACSTR "\n", MAC2STR(addr()));
+    Serial.printf("Message length: %d bytes\n", len);
+    Serial.printf("BLE Device Info: %s\n", (char *)data);
+    Serial.println("========================\n");
   }
 };
 
 /* Global Variables */
-
-uint32_t msg_count = 0;
-
-// Create a broadcast peer object
-ESP_NOW_Broadcast_Peer broadcast_peer(ESPNOW_WIFI_CHANNEL, WIFI_IF_STA, nullptr);
-
-class MyAdvertisedDeviceCallbacks: public BLEAdvertisedDeviceCallbacks {
-  void onResult(BLEAdvertisedDevice advertisedDevice) {
-    Serial.printf("Advertised Device: %s \n", advertisedDevice.toString().c_str());
-
-// Broadcast a message to all devices within the network
-  char data[250];
-  snprintf(data, sizeof(data), advertisedDevice.toString().c_str());
-
-  Serial.printf("Broadcasting message: %s\n", data);
-
-  if (!broadcast_peer.send_message((uint8_t *)data, sizeof(data))) {
-    Serial.println("Failed to broadcast message");
-  }
-
-  }
-};
-
-
+ESP_NOW_Slave_Peer *slave = nullptr;
+uint32_t messageCount = 0;
 
 /* Main */
-
 void setup() {
   Serial.begin(115200);
+  delay(1000);
 
-  Serial.println("Scanning BT...");
+  Serial.println("=== ESP-NOW Master Receiver ===");
 
-  BLEDevice::init("");
-  pBLEScan = BLEDevice::getScan(); //create new scan
-  pBLEScan->setAdvertisedDeviceCallbacks(new MyAdvertisedDeviceCallbacks());
-  pBLEScan->setActiveScan(true); //active scan uses more power, but get results faster
-  pBLEScan->setInterval(100);
-  pBLEScan->setWindow(99);  // less or equal setInterval value
-
-  // Initialize the Wi-Fi module
+  // Initialize Wi-Fi
   WiFi.mode(WIFI_STA);
   WiFi.setChannel(ESPNOW_WIFI_CHANNEL);
   while (!WiFi.STA.started()) {
     delay(100);
   }
 
-  Serial.println("ESP-NOW Example - Broadcast Master");
   Serial.println("Wi-Fi parameters:");
   Serial.println("  Mode: STA");
   Serial.println("  MAC Address: " + WiFi.macAddress());
   Serial.printf("  Channel: %d\n", ESPNOW_WIFI_CHANNEL);
 
-  // Register the broadcast peer
-  if (!broadcast_peer.begin()) {
-    Serial.println("Failed to initialize broadcast peer");
-    Serial.println("Reebooting in 5 seconds...");
+  // Initialize ESP-NOW
+  if (!ESP_NOW.begin()) {
+    Serial.println("Failed to initialize ESP-NOW");
+    Serial.println("Rebooting in 5 seconds...");
     delay(5000);
     ESP.restart();
   }
 
   Serial.printf("ESP-NOW version: %d, max data length: %d\n", ESP_NOW.getVersion(), ESP_NOW.getMaxDataLen());
 
-  Serial.println("Setup complete. Broadcasting messages every 5 seconds.");
+  // Register slave peer
+  slave = new ESP_NOW_Slave_Peer(slaveAddress, ESPNOW_WIFI_CHANNEL, WIFI_IF_STA, nullptr);
+  if (!slave->add_peer()) {
+    Serial.println("Failed to register slave");
+    Serial.println("Rebooting in 5 seconds...");
+    delay(5000);
+    ESP.restart();
+  }
+
+  Serial.printf("Slave registered: " MACSTR "\n", MAC2STR(slaveAddress));
+  Serial.println("Setup complete. Waiting for messages from slave...");
 }
 
 void loop() {
+  // Afficher un message de statut toutes les 30 secondes
+  static unsigned long lastStatus = 0;
+  if (millis() - lastStatus > 30000) {
+    lastStatus = millis();
+    Serial.printf("Master active - Messages received: %lu\n", messageCount);
+  }
 
- // put your main code here, to run repeatedly:
-  BLEScanResults *foundDevices = pBLEScan->start(scanTime, false);
-  Serial.print("Devices found: ");
-  Serial.println(foundDevices->getCount());
-  Serial.println("Scan done!");
-  pBLEScan->clearResults();   // delete results fromBLEScan buffer to release memory
-
-  // // Broadcast a message to all devices within the network
-  // char data[32];
-  // snprintf(data, sizeof(data), "Hello, World! #%lu", msg_count++);
-
-  // Serial.printf("Broadcasting message: %s\n", data);
-
-  // if (!broadcast_peer.send_message((uint8_t *)data, sizeof(data))) {
-  //   Serial.println("Failed to broadcast message");
-  // }
-
-  delay(5000);
+  delay(100);
 }

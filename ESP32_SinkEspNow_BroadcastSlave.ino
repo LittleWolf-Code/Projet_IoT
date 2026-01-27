@@ -1,129 +1,172 @@
 /*
-    ESP-NOW Broadcast Slave
-    Lucas Saavedra Vaz - 2024
-
-    This sketch demonstrates how to receive broadcast messages from a master device using the ESP-NOW protocol.
-
-    The master device will broadcast a message every 5 seconds to all devices within the network.
-
-    The slave devices will receive the broadcasted messages. If they are not from a known master, they will be registered as a new master
-    using a callback function.
+    ESP-NOW Slave with BLE Scanner + Filter
+    Le slave scanne les appareils BLE, filtre ceux contenant "reseau_1"
+    et envoie uniquement ceux-là au master
 */
 
 #include "ESP32_NOW.h"
 #include "WiFi.h"
+#include <esp_mac.h>
 
-#include <esp_mac.h>  // For the MAC2STR and MACSTR macros
-
-#include <vector>
+#include <BLEDevice.h>
+#include <BLEUtils.h>
+#include <BLEScan.h>
+#include <BLEAdvertisedDevice.h>
 
 /* Definitions */
-
 #define ESPNOW_WIFI_CHANNEL 6
 
+// IMPORTANT: Remplacez par l'adresse MAC de votre MASTER
+uint8_t masterAddress[] = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF}; // À MODIFIER !
+
+// Filtre : mot-clé à rechercher dans les appareils BLE
+const char* FILTER_KEYWORD = "reseau_1";
+
+/* BLE Variables */
+int scanTime = 10; // en secondes
+BLEScan* pBLEScan;
+
 /* Classes */
-
-// Creating a new class that inherits from the ESP_NOW_Peer class is required.
-
-class ESP_NOW_Peer_Class : public ESP_NOW_Peer {
+class ESP_NOW_Master_Peer : public ESP_NOW_Peer {
 public:
-  // Constructor of the class
-  ESP_NOW_Peer_Class(const uint8_t *mac_addr, uint8_t channel, wifi_interface_t iface, const uint8_t *lmk) : ESP_NOW_Peer(mac_addr, channel, iface, lmk) {}
+  ESP_NOW_Master_Peer(const uint8_t *mac_addr, uint8_t channel, wifi_interface_t iface, const uint8_t *lmk) 
+    : ESP_NOW_Peer(mac_addr, channel, iface, lmk) {}
 
-  // Destructor of the class
-  ~ESP_NOW_Peer_Class() {}
+  ~ESP_NOW_Master_Peer() {}
 
-  // Function to register the master peer
   bool add_peer() {
     if (!add()) {
-      log_e("Failed to register the broadcast peer");
+      log_e("Failed to register the master peer");
       return false;
     }
     return true;
   }
 
-  // Function to print the received messages from the master
-  void onReceive(const uint8_t *data, size_t len, bool broadcast) {
-    Serial.printf("Received a message from master " MACSTR " (%s)\n", MAC2STR(addr()), broadcast ? "broadcast" : "unicast");
-    Serial.printf("  Message: %s\n", (char *)data);
+  bool send_message(const uint8_t *data, size_t len) {
+    if (!send(data, len)) {
+      log_e("Failed to send message to master");
+      return false;
+    }
+    return true;
   }
 };
 
 /* Global Variables */
+ESP_NOW_Master_Peer *master = nullptr;
+uint32_t totalDevices = 0;
+uint32_t filteredDevices = 0;
 
-// List of all the masters. It will be populated when a new master is registered
-// Note: Using pointers instead of objects to prevent dangling pointers when the vector reallocates
-std::vector<ESP_NOW_Peer_Class *> masters;
+/* BLE Callback */
+class MyAdvertisedDeviceCallbacks: public BLEAdvertisedDeviceCallbacks {
+  void onResult(BLEAdvertisedDevice advertisedDevice) {
+    totalDevices++;
+    
+    String deviceInfo = advertisedDevice.toString();
+    Serial.printf("BLE Device found: %s\n", deviceInfo.c_str());
 
-/* Callbacks */
-
-// Callback called when an unknown peer sends a message
-void register_new_master(const esp_now_recv_info_t *info, const uint8_t *data, int len, void *arg) {
-  if (memcmp(info->des_addr, ESP_NOW.BROADCAST_ADDR, 6) == 0) {
-    Serial.printf("Unknown peer " MACSTR " sent a broadcast message\n", MAC2STR(info->src_addr));
-    Serial.println("Registering the peer as a master");
-
-    ESP_NOW_Peer_Class *new_master = new ESP_NOW_Peer_Class(info->src_addr, ESPNOW_WIFI_CHANNEL, WIFI_IF_STA, nullptr);
-    if (!new_master->add_peer()) {
-      Serial.println("Failed to register the new master");
-      delete new_master;
-      return;
+    // Vérifier si le device contient "reseau_1" dans son nom ou ses données
+    bool matchFound = false;
+    
+    // Recherche dans le nom de l'appareil
+    if (advertisedDevice.haveName()) {
+      String deviceName = advertisedDevice.getName().c_str();
+      if (deviceName.indexOf(FILTER_KEYWORD) >= 0) {
+        matchFound = true;
+        Serial.println("  -> MATCH in device name!");
+      }
     }
-    masters.push_back(new_master);
-    Serial.printf("Successfully registered master " MACSTR " (total masters: %zu)\n", MAC2STR(new_master->addr()), masters.size());
-  } else {
-    // The slave will only receive broadcast messages
-    log_v("Received a unicast message from " MACSTR, MAC2STR(info->src_addr));
-    log_v("Igorning the message");
+    
+    // Recherche dans les données complètes (toString)
+    if (!matchFound && deviceInfo.indexOf(FILTER_KEYWORD) >= 0) {
+      matchFound = true;
+      Serial.println("  -> MATCH in device data!");
+    }
+
+    // Si le filtre correspond, envoyer au master
+    if (matchFound) {
+      filteredDevices++;
+      
+      if (master != nullptr) {
+        char data[250];
+        snprintf(data, sizeof(data), "%s", deviceInfo.c_str());
+
+        Serial.printf("  -> Sending to master: %s\n", data);
+
+        if (!master->send_message((uint8_t *)data, strlen(data) + 1)) {
+          Serial.println("  -> ERROR: Failed to send to master");
+        } else {
+          Serial.println("  -> SUCCESS: Sent to master");
+        }
+      }
+    } else {
+      Serial.println("  -> Filtered out (no match)");
+    }
   }
-}
+};
 
 /* Main */
-
 void setup() {
   Serial.begin(115200);
+  delay(1000);
 
-  // Initialize the Wi-Fi module
+  Serial.println("=== ESP-NOW Slave with BLE Scanner + Filter ===");
+  Serial.printf("Filter keyword: '%s'\n", FILTER_KEYWORD);
+
+  // Initialize Wi-Fi
   WiFi.mode(WIFI_STA);
   WiFi.setChannel(ESPNOW_WIFI_CHANNEL);
   while (!WiFi.STA.started()) {
     delay(100);
   }
 
-  Serial.println("ESP-NOW Example - Broadcast Slave");
   Serial.println("Wi-Fi parameters:");
   Serial.println("  Mode: STA");
   Serial.println("  MAC Address: " + WiFi.macAddress());
   Serial.printf("  Channel: %d\n", ESPNOW_WIFI_CHANNEL);
 
-  // Initialize the ESP-NOW protocol
+  // Initialize ESP-NOW
   if (!ESP_NOW.begin()) {
     Serial.println("Failed to initialize ESP-NOW");
-    Serial.println("Reeboting in 5 seconds...");
+    Serial.println("Rebooting in 5 seconds...");
     delay(5000);
     ESP.restart();
   }
 
-  Serial.printf("ESP-NOW version: %d, max data length: %d\n", ESP_NOW.getVersion(), ESP_NOW.getMaxDataLen());
+  // Register master peer
+  master = new ESP_NOW_Master_Peer(masterAddress, ESPNOW_WIFI_CHANNEL, WIFI_IF_STA, nullptr);
+  if (!master->add_peer()) {
+    Serial.println("Failed to register master");
+    Serial.println("Rebooting in 5 seconds...");
+    delay(5000);
+    ESP.restart();
+  }
 
-  // Register the new peer callback
-  ESP_NOW.onNewPeer(register_new_master, nullptr);
+  Serial.printf("Master registered: " MACSTR "\n", MAC2STR(masterAddress));
 
-  Serial.println("Setup complete. Waiting for a master to broadcast a message...");
+  // Initialize BLE
+  Serial.println("Initializing BLE Scanner...");
+  BLEDevice::init("");
+  pBLEScan = BLEDevice::getScan();
+  pBLEScan->setAdvertisedDeviceCallbacks(new MyAdvertisedDeviceCallbacks());
+  pBLEScan->setActiveScan(true);
+  pBLEScan->setInterval(100);
+  pBLEScan->setWindow(99);
+
+  Serial.println("Setup complete. Starting BLE scans...");
+  Serial.println("Only devices containing 'reseau_1' will be sent to master\n");
 }
 
 void loop() {
-  // Print debug information every 10 seconds
-  static unsigned long last_debug = 0;
-  if (millis() - last_debug > 10000) {
-    last_debug = millis();
-    Serial.printf("Registered masters: %zu\n", masters.size());
-    for (size_t i = 0; i < masters.size(); i++) {
-      if (masters[i]) {
-        Serial.printf("  Master %zu: " MACSTR "\n", i, MAC2STR(masters[i]->addr()));
-      }
-    }
-  }
+  Serial.println("\n========== Starting BLE Scan ==========");
+  BLEScanResults *foundDevices = pBLEScan->start(scanTime, false);
+  
+  Serial.printf("Scan complete!\n");
+  Serial.printf("  Total devices found: %d\n", foundDevices->getCount());
+  Serial.printf("  Devices matching filter: %lu\n", filteredDevices);
+  Serial.printf("  Total devices scanned: %lu\n", totalDevices);
+  Serial.println("=======================================\n");
+  
+  pBLEScan->clearResults();
 
-  delay(100);
+  delay(5000);
 }
