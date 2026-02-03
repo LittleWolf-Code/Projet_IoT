@@ -1,0 +1,185 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Système de Localisation BLE en Temps Réel</title>
+    <meta name="description" content="Système de localisation d'appareils BLE en temps réel utilisant MQTT et triangulation RSSI">
+    
+    <!-- Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    
+    <!-- Styles -->
+    <link rel="stylesheet" href="style.css">
+    
+    <!-- MQTT.js Library -->
+    <script src="https://unpkg.com/mqtt@5.3.5/dist/mqtt.min.js"></script>
+    
+    <!-- PDF.js Library for PDF rendering -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+</head>
+<body>
+    <div class="app-container">
+        <!-- Header -->
+        <header class="app-header">
+            <div class="header-content">
+                <h1 class="app-title">🎯 Localisation BLE Temps Réel</h1>
+                <div class="connection-status">
+                    <span class="status-indicator" id="status-indicator"></span>
+                    <span id="status-text">Déconnecté</span>
+                </div>
+            </div>
+        </header>
+
+        <!-- Left Panel - MQTT Configuration & ESP Motes -->
+        <aside class="panel">
+            <div>
+                <h2 class="panel-title">Configuration MQTT</h2>
+                
+                <div class="form-group">
+                    <label class="form-label" for="mqtt-broker">Broker MQTT</label>
+                    <input type="text" id="mqtt-broker" class="form-input" value="sink" placeholder="sink">
+                </div>
+                
+                <div class="form-group">
+                    <label class="form-label" for="mqtt-port">Port</label>
+                    <input type="number" id="mqtt-port" class="form-input" value="8883" placeholder="8883">
+                </div>
+                
+                <div class="form-group">
+                    <label class="form-label" for="mqtt-protocol">Protocole</label>
+                    <select id="mqtt-protocol" class="form-select">
+                        <option value="wss">WSS (Secure WebSocket)</option>
+                        <option value="ws">WS (WebSocket)</option>
+                    </select>
+                </div>
+                
+                <div class="form-group">
+                    <label class="form-label" for="mqtt-username">Username (optionnel)</label>
+                    <input type="text" id="mqtt-username" class="form-input" placeholder="Username">
+                </div>
+                
+                <div class="form-group">
+                    <label class="form-label" for="mqtt-password">Password (optionnel)</label>
+                    <input type="password" id="mqtt-password" class="form-input" placeholder="Password">
+                </div>
+                
+                <button id="mqtt-connect-btn" class="btn btn-primary" style="width: 100%;">
+                    🔌 Connecter au Broker
+                </button>
+            </div>
+
+            <div style="margin-top: auto;">
+                <h2 class="panel-title">ESP Motes (7)</h2>
+                
+                <div class="form-group">
+                    <label class="form-label" for="new-mote-mac">Adresse MAC</label>
+                    <input type="text" id="new-mote-mac" class="form-input" placeholder="AA:BB:CC:DD:EE:FF">
+                </div>
+                
+                <button id="add-mote-btn" class="btn btn-secondary" style="width: 100%;">
+                    ➕ Ajouter ESP Mote
+                </button>
+                
+                <div class="mote-list" id="mote-list">
+                    <!-- Motes will be added here dynamically -->
+                </div>
+                
+                <p class="text-small text-muted" style="margin-top: var(--spacing-sm);">
+                    💡 Cliquez sur le plan pour placer les ESP motes
+                </p>
+            </div>
+        </aside>
+
+        <!-- Center - Canvas Area -->
+        <main class="canvas-container">
+            <div class="floor-selector">
+                <button class="floor-btn active" data-floor="0">ISIS 10A</button>
+                <button class="floor-btn" data-floor="1">ISIS R+1</button>
+            </div>
+            
+            <div style="display: flex; gap: var(--spacing-sm); margin-bottom: var(--spacing-sm);">
+                <div class="form-group" style="flex: 1;">
+                    <label class="form-label">Plan ISIS 10A (PDF)</label>
+                    <div class="file-upload-area" id="upload-area-0">
+                        <div class="upload-icon">📄</div>
+                        <div class="upload-text">Cliquez pour charger le PDF</div>
+                        <input type="file" id="pdf-input-0" accept=".pdf" style="display: none;">
+                    </div>
+                </div>
+                
+                <div class="form-group" style="flex: 1;">
+                    <label class="form-label">Plan ISIS R+1 (PDF)</label>
+                    <div class="file-upload-area" id="upload-area-1">
+                        <div class="upload-icon">📄</div>
+                        <div class="upload-text">Cliquez pour charger le PDF</div>
+                        <input type="file" id="pdf-input-1" accept=".pdf" style="display: none;">
+                    </div>
+                </div>
+            </div>
+            
+            <div class="canvas-wrapper">
+                <canvas id="localization-canvas" width="1200" height="800"></canvas>
+            </div>
+            
+            <div style="display: flex; gap: var(--spacing-sm); align-items: center;">
+                <div class="form-group" style="flex: 1;">
+                    <label class="form-label">Mode</label>
+                    <select id="canvas-mode" class="form-select">
+                        <option value="place-motes">Placer les ESP Motes</option>
+                        <option value="view">Visualisation</option>
+                    </select>
+                </div>
+                
+                <button id="clear-canvas-btn" class="btn btn-secondary">
+                    🗑️ Effacer
+                </button>
+                
+                <button id="save-config-btn" class="btn btn-success">
+                    💾 Sauvegarder Config
+                </button>
+            </div>
+        </main>
+
+        <!-- Right Panel - Devices Detected -->
+        <aside class="panel">
+            <h2 class="panel-title">Appareils Détectés</h2>
+            
+            <div class="form-group">
+                <label class="form-label" for="device-filter">Rechercher</label>
+                <input type="text" id="device-filter" class="form-input" placeholder="Nom de l'appareil...">
+            </div>
+            
+            <div class="device-list" id="device-list">
+                <div style="text-align: center; padding: var(--spacing-xl); color: var(--color-text-muted);">
+                    <div style="font-size: 3rem; opacity: 0.3;">📡</div>
+                    <p class="text-small">En attente de données MQTT...</p>
+                </div>
+            </div>
+            
+            <div class="mt-auto">
+                <h3 class="panel-title" style="font-size: var(--font-size-md);">Paramètres RSSI</h3>
+                
+                <div class="form-group">
+                    <label class="form-label" for="rssi-at-1m">RSSI à 1m (dBm)</label>
+                    <input type="number" id="rssi-at-1m" class="form-input" value="-59" placeholder="-59">
+                </div>
+                
+                <div class="form-group">
+                    <label class="form-label" for="path-loss">Facteur d'atténuation (n)</label>
+                    <input type="number" id="path-loss" class="form-input" value="2.5" step="0.1" placeholder="2.5">
+                </div>
+                
+                <p class="text-small text-muted">
+                    💡 Ajustez ces valeurs pour calibrer la précision de localisation
+                </p>
+            </div>
+        </aside>
+    </div>
+
+    <!-- Main Application Script -->
+    <script src="app.js"></script>
+</body>
+</html>
