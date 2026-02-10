@@ -1,0 +1,180 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>IoT Dashboard - Appareils BLE</title>
+  <meta name="description" content="BLE device tracking from ESP32 motes">
+  <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+  <div class="app-container">
+    <!-- SIDEBAR -->
+    <nav class="sidebar">
+      <div class="sidebar-brand">
+        <div class="brand-icon">📡</div>
+        <div>
+          <h1>IoT Dashboard<span class="brand-sub">ESP32 Network</span></h1>
+        </div>
+      </div>
+
+      <div class="nav-section">
+        <div class="nav-section-title">Monitoring</div>
+        <a href="/" class="nav-link">
+          <span class="nav-icon">📊</span>
+          <span>Dashboard</span>
+        </a>
+        <a href="/ble.html" class="nav-link active">
+          <span class="nav-icon">📱</span>
+          <span>Appareils BLE</span>
+        </a>
+      </div>
+
+      <div class="nav-section">
+        <div class="nav-section-title">Configuration</div>
+        <a href="/manage.html" class="nav-link">
+          <span class="nav-icon">➕</span>
+          <span>Gestion ESP32</span>
+        </a>
+        <a href="/settings.html" class="nav-link">
+          <span class="nav-icon">⚙️</span>
+          <span>Paramètres</span>
+        </a>
+      </div>
+
+      <div class="nav-section">
+        <div class="nav-section-title">Avancé</div>
+        <a href="/map.html" class="nav-link">
+          <span class="nav-icon">🗺️</span>
+          <span>Carte</span>
+        </a>
+      </div>
+
+      <div class="mqtt-status" id="mqtt-status">
+        <span class="mqtt-status-dot disconnected" id="mqtt-dot"></span>
+        <span class="mqtt-status-text" id="mqtt-text">MQTT Déconnecté</span>
+      </div>
+    </nav>
+
+    <!-- MAIN CONTENT -->
+    <main class="main-content">
+      <div class="page-header">
+        <h2>📱 Appareils BLE Détectés</h2>
+        <p>Appareils Bluetooth Low Energy détectés par les motes ESP32, avec RSSI et mote le plus proche</p>
+      </div>
+
+      <!-- STATS -->
+      <div class="stats-grid">
+        <div class="stat-card">
+          <div class="stat-icon">📱</div>
+          <div class="stat-value" id="stat-ble-total">0</div>
+          <div class="stat-label">Appareils BLE</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-icon">📡</div>
+          <div class="stat-value" id="stat-motes-detecting">0</div>
+          <div class="stat-label">Motes Actifs</div>
+        </div>
+      </div>
+
+      <!-- BLE DEVICES TABLE -->
+      <div class="table-container">
+        <div class="table-header">
+          <h3>Appareils Détectés</h3>
+          <span class="badge" id="ble-count-badge">0 appareils</span>
+        </div>
+        <table id="ble-table">
+          <thead>
+            <tr>
+              <th>Nom</th>
+              <th>RSSI par Mote</th>
+              <th>Mote le Plus Proche</th>
+              <th>Dernier Signal</th>
+            </tr>
+          </thead>
+          <tbody id="ble-table-body">
+            <tr>
+              <td colspan="4">
+                <div class="empty-state">
+                  <div class="empty-icon">📱</div>
+                  <h3>Aucun appareil BLE détecté</h3>
+                  <p>Les appareils commençant par "reseau1" apparaîtront ici</p>
+                </div>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </main>
+  </div>
+
+  <div class="toast-container" id="toast-container"></div>
+
+  <script src="/socket.io/socket.io.js"></script>
+  <script src="/js/app.js"></script>
+  <script>
+    // === BLE page-specific logic ===
+    const bleTableBody = document.getElementById('ble-table-body');
+
+    function rssiToColor(rssi) {
+      if (rssi >= -50) return 'var(--accent-green)';
+      if (rssi >= -70) return 'var(--accent-cyan)';
+      if (rssi >= -85) return 'var(--accent-yellow)';
+      return 'var(--accent-red)';
+    }
+
+    function rssiToPercent(rssi) {
+      // Map -100..0 to 0..100%
+      return Math.max(0, Math.min(100, (rssi + 100)));
+    }
+
+    function updateBLEPage(bleData) {
+      const devices = Object.values(bleData);
+      const allMotes = new Set();
+
+      devices.forEach(d => {
+        Object.keys(d.motes).forEach(m => allMotes.add(m));
+      });
+
+      document.getElementById('stat-ble-total').textContent = devices.length;
+      document.getElementById('stat-motes-detecting').textContent = allMotes.size;
+      document.getElementById('ble-count-badge').textContent = devices.length + ' appareils';
+
+      if (devices.length === 0) {
+        bleTableBody.innerHTML = `<tr><td colspan="4">
+          <div class="empty-state">
+            <div class="empty-icon">📱</div>
+            <h3>Aucun appareil BLE détecté</h3>
+            <p>Les appareils commençant par "reseau1" apparaîtront ici</p>
+          </div></td></tr>`;
+        return;
+      }
+
+      bleTableBody.innerHTML = devices.map(d => {
+        const motesHtml = Object.entries(d.motes).map(([mac, rssi]) => {
+          const pct = rssiToPercent(rssi);
+          const color = rssiToColor(rssi);
+          const isClosest = mac === d.closestMote;
+          return `<div class="rssi-bar-container" style="margin-bottom:4px">
+            <span class="mac-address" style="font-size:11px;min-width:130px">${mac}${isClosest ? ' <span class="closest-badge">Plus proche</span>' : ''}</span>
+            <div class="rssi-bar"><div class="rssi-bar-fill" style="width:${pct}%;background:${color}"></div></div>
+            <span class="rssi-value" style="color:${color}">${rssi} dBm</span>
+          </div>`;
+        }).join('');
+
+        const ago = d.lastSeen ? timeSince(d.lastSeen) : '—';
+        const closestMac = d.closestMote || '—';
+
+        return `<tr>
+          <td><strong>${d.name}</strong></td>
+          <td>${motesHtml}</td>
+          <td><span class="mac-address">${closestMac}</span><br><span style="font-size:12px;color:var(--accent-green)">${d.closestRssi || '—'} dBm</span></td>
+          <td>${ago}</td>
+        </tr>`;
+      }).join('');
+    }
+
+    socket.on('ble:update', updateBLEPage);
+  </script>
+</body>
+</html>

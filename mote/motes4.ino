@@ -69,13 +69,27 @@ typedef struct routing_entry {
   uint8_t hopCount;          // Distance to destination
 } routing_entry;
 
-// Default routing: all motes send directly to sink
-// TODO: Modify nextHop if you need multi-hop routing
-routing_entry myRoute = {
-  .destMAC = {0xEC, 0x62, 0x60, 0x11, 0xA2, 0x3C},     // SINK
-  .nextHopMAC = {0xEC, 0x62, 0x60, 0x11, 0x97, 0xA0},  // Mote 0   // Direct to SINK
-  .hopCount = 1
+// Full routing table: indexed by MOTE_ID
+// Each entry defines how that mote reaches the SINK
+routing_entry routingTable[MOTE_COUNT] = {
+  // Mote 0: direct to SINK (hop 1)
+  { {0xEC,0x62,0x60,0x11,0xA2,0x3C}, {0xEC,0x62,0x60,0x11,0xA2,0x3C}, 1 },
+  // Mote 1: direct to SINK (hop 1)
+  { {0xEC,0x62,0x60,0x11,0xA2,0x3C}, {0xEC,0x62,0x60,0x11,0xA2,0x3C}, 1 },
+  // Mote 2: direct to SINK (hop 1)
+  { {0xEC,0x62,0x60,0x11,0xA2,0x3C}, {0xEC,0x62,0x60,0x11,0xA2,0x3C}, 1 },
+  // Mote 3: via Mote 0 (hop 2)
+  { {0xEC,0x62,0x60,0x11,0xA2,0x3C}, {0xEC,0x62,0x60,0x11,0x97,0xA0}, 2 },
+  // Mote 4: via Mote 0 (hop 2)
+  { {0xEC,0x62,0x60,0x11,0xA2,0x3C}, {0xEC,0x62,0x60,0x11,0x97,0xA0}, 2 },
+  // Mote 5: via Mote 1 (hop 2)
+  { {0xEC,0x62,0x60,0x11,0xA2,0x3C}, {0x24,0xDC,0xC3,0x14,0x37,0x98}, 2 },
+  // Mote 6: via Mote 2 (hop 2)
+  { {0xEC,0x62,0x60,0x11,0xA2,0x3C}, {0xC4,0xDE,0xE2,0xB1,0x3E,0xC8}, 2 },
 };
+
+// Shortcut: this mote's route
+#define myRoute routingTable[MOTE_ID]
 
 // ESP-NOW peer info
 esp_now_peer_info_t sinkPeerInfo;
@@ -165,12 +179,16 @@ void getMyMAC(uint8_t *mac) {
 }
 
 void printRoutingTable() {
-  Serial.println("\n=== MOTE ROUTING TABLE ===");
-  Serial.printf("My ID: Mote %d\n", MOTE_ID);
-  Serial.printf("My MAC: %s\n", macToString(moteAddress[MOTE_ID]).c_str());
-  Serial.printf("Destination: SINK (%s)\n", macToString(myRoute.destMAC).c_str());
-  Serial.printf("Next Hop: %s\n", macToString(myRoute.nextHopMAC).c_str());
-  Serial.printf("Hop Count: %d\n", myRoute.hopCount);
+  Serial.println("\n=== FULL ROUTING TABLE ===");
+  Serial.printf("My ID: Mote %d | My MAC: %s\n", MOTE_ID, macToString(moteAddress[MOTE_ID]).c_str());
+  Serial.println("---------------------------");
+  for (int i = 0; i < MOTE_COUNT; i++) {
+    Serial.printf("Mote %d -> nextHop: %s (hops: %d)%s\n",
+      i,
+      macToString(routingTable[i].nextHopMAC).c_str(),
+      routingTable[i].hopCount,
+      (i == MOTE_ID) ? " << ME" : "");
+  }
   Serial.println("===========================\n");
 }
 

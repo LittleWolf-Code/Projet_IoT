@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>IoT Dashboard - Carte</title>
+  <meta name="description" content="Real-time location map">
+  <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+  <div class="app-container">
+    <!-- SIDEBAR -->
+    <nav class="sidebar">
+      <div class="sidebar-brand">
+        <div class="brand-icon">📡</div>
+        <div>
+          <h1>IoT Dashboard<span class="brand-sub">ESP32 Network</span></h1>
+        </div>
+      </div>
+
+      <div class="nav-section">
+        <div class="nav-section-title">Monitoring</div>
+        <a href="/" class="nav-link">
+          <span class="nav-icon">📊</span>
+          <span>Dashboard</span>
+        </a>
+        <a href="/ble.html" class="nav-link">
+          <span class="nav-icon">📱</span>
+          <span>Appareils BLE</span>
+        </a>
+      </div>
+
+      <div class="nav-section">
+        <div class="nav-section-title">Configuration</div>
+        <a href="/manage.html" class="nav-link">
+          <span class="nav-icon">➕</span>
+          <span>Gestion ESP32</span>
+        </a>
+        <a href="/settings.html" class="nav-link">
+          <span class="nav-icon">⚙️</span>
+          <span>Paramètres</span>
+        </a>
+      </div>
+
+      <div class="nav-section">
+        <div class="nav-section-title">Avancé</div>
+        <a href="/map.html" class="nav-link active">
+          <span class="nav-icon">🗺️</span>
+          <span>Carte</span>
+        </a>
+      </div>
+
+      <div class="mqtt-status" id="mqtt-status">
+        <span class="mqtt-status-dot disconnected" id="mqtt-dot"></span>
+        <span class="mqtt-status-text" id="mqtt-text">MQTT Déconnecté</span>
+      </div>
+    </nav>
+
+    <!-- MAIN CONTENT -->
+    <main class="main-content">
+      <div class="placeholder-page">
+        <div class="placeholder-icon">🗺️</div>
+        <h2>Carte en Temps Réel</h2>
+        <p>Cette fonctionnalité est en cours de développement.</p>
+        <p style="margin-top: 12px; color: var(--text-muted);">La carte permettra de visualiser les déplacements des personnes en temps réel<br>basé sur la triangulation des signaux BLE captés par les motes ESP32.</p>
+      </div>
+    </main>
+  </div>
+
+  <div class="toast-container" id="toast-container"></div>
+
+  <script src="/socket.io/socket.io.js"></script>
+  <script src="/js/app.js"></script>
+</body>
+</html>
