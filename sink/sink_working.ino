@@ -17,14 +17,14 @@
 // ============================================
 // CONFIGURATION - À MODIFIER SELON VOTRE RÉSEAU
 // ============================================
-#define MOTE_COUNT 3
+#define MOTE_COUNT 7
 
 // WiFi credentials
 const char *ssid = "iot";
 const char *password = "iotisis;";
 
 // MQTT Broker
-const char *mqtt_server = "192.168.1.21";
+const char *mqtt_server = "172.18.32.43";
 
 WiFiClient espClient;
 PubSubClient mqttClient(espClient);
@@ -34,9 +34,16 @@ PubSubClient mqttClient(espClient);
 // ============================================
 // Mote MAC addresses (index = moteId)
 uint8_t moteAddress[MOTE_COUNT][6] = {
-  {0x24, 0xDC, 0xC3, 0x14, 0x37, 0x98},  // Mote 0
-  {0x08, 0xF9, 0xE0, 0x00, 0xE2, 0x60},  // Mote 1
-  {0xEC, 0x62, 0x60, 0x11, 0xA2, 0x3C}   // Mote 2
+  {0xEC, 0x62, 0x60, 0x11, 0x97, 0xA0},   // Mote 0
+  {0x24, 0xDC, 0xC3, 0x14, 0x37, 0x98},  // Mote 1
+  {0xC4, 0xDE, 0xE2, 0xB1, 0x3E, 0xC8}, //Mote 2
+  
+  {0x08, 0xF9, 0xE0, 0x01, 0x0D, 0x00}, //Mote 3
+  {0xEC, 0x62, 0x60, 0x5B, 0x35, 0x08}, //Mote 4
+  {0x08, 0xF9, 0xE0, 0x00, 0xE2, 0x60}, //Mote 5
+
+  {0x24, 0xDC, 0xC3, 0x14, 0x38, 0x24} //Mote 6
+
 };
 
 esp_now_peer_info_t peerInfo[MOTE_COUNT];
@@ -187,11 +194,27 @@ void publishToMQTT(int moteId) {
   char buffer[16];
   
   // Publish based on message type
-  if (incomingMessage.msgType == MSG_TYPE_BLE_SCAN) {
-    // BLE scan result
-    mqttClient.publish((baseTopic + "ble").c_str(), incomingMessage.text);
-    Serial.printf("📡 MQTT published BLE to: %s\n", (baseTopic + "ble").c_str());
-  } else {
+if (incomingMessage.msgType == MSG_TYPE_BLE_SCAN) {
+    // **NOUVELLE LOGIQUE** - Parser le JSON pour extraire deviceName et RSSI
+    String jsonText = String(incomingMessage.text);
+
+    // Méthode simple sans bibliothèque JSON
+    int nameStart = jsonText.indexOf("\"name\":\"") + 8;
+    int nameEnd = jsonText.indexOf("\"", nameStart);
+    String deviceName = jsonText.substring(nameStart, nameEnd);
+
+    int rssiStart = jsonText.indexOf("\"rssi\":") + 7;
+    int rssiEnd = jsonText.indexOf("}", rssiStart);
+    String rssiStr = jsonText.substring(rssiStart, rssiEnd);
+
+    // Créer un topic dynamique avec deviceName
+    String dynamicTopic = baseTopic + "ble/" + deviceName + "/rssi";
+
+    // Publier la valeur RSSI comme payload (en tant que String)
+    mqttClient.publish(dynamicTopic.c_str(), rssiStr.c_str());
+    Serial.printf("📡 MQTT published BLE to: %s with RSSI: %s\n", 
+              dynamicTopic.c_str(), rssiStr.c_str());} 
+          else {
     // Sensor data
     dtostrf(incomingMessage.data0, 1, 2, buffer);
     mqttClient.publish((baseTopic + "data0").c_str(), buffer);
