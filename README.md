@@ -1,6 +1,6 @@
 a ajouter 
 
-##1)
+## 1)
 Fréquence : Toutes les 30 secondes, on analyse les données de la minute précédente.( on peut aussi passer a 2 minutes)
 
 Cas 1 : Un seul ESP32 détecte le device, on considere que le divice est dans la piece de l'esp32 a la position de l'esp 32
@@ -17,7 +17,7 @@ Action : Trilatération
 
 Cas 4 : plus de 3 ESP32, on prend les 3 plus proche
 
-##2). Gestion des Étages (Axe Z)
+## 2). Gestion des Étages (Axe Z)
 
 z= 0 RDC
 
@@ -29,20 +29,20 @@ Filtrage : Pour le calcul $(x, y)$, on ne sélectionne que les ESP32 appartenant
 
 
 
-##3) Ajout base de donnée influxdB
+## 3) Ajout base de donnée influxdB
 
    -stockage des scan BLe ( realiser par NodeRed)
  
   -stockage de la position (x,y,z) du divice
 
-##4) Creation de zone sur la carte (exemple salle B101,B102) ( gestion des couloirs a rajouter plutard )
+## 4) Creation de zone sur la carte (exemple salle B101,B102) ( gestion des couloirs a rajouter plutard )
  
   - suivi de la position du device dans les salle
  
   - stockage de la salle du device
 
-##5) en cliquant sur un device on peut avoir l'historique du device ( il est restée 10 min dans la piece x, puis 15 min dans la salle y, puis de nouveau 12 min dans la salle x )
+## 5) en cliquant sur un device on peut avoir l'historique du device ( il est restée 10 min dans la piece x, puis 15 min dans la salle y, puis de nouveau 12 min dans la salle x )
     
-##6) etape facultative, pouvoir selectionner le divice et pouvoir suivre le chemin du divice
+## 6) etape facultative, pouvoir selectionner le divice et pouvoir suivre le chemin du divice
 
 
