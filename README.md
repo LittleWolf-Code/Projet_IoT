@@ -1,7 +1,7 @@
 a ajouter 
 
-## 1)
-Fréquence : Toutes les 30 secondes, on analyse les données de la minute précédente.( on peut aussi passer a 2 minutes)
+## 1) Web App
+### Fréquence : Toutes les 30 secondes, on analyse les données de la minute précédente.( on peut aussi passer a 2 minutes)
 
 ### Cas 1 : Un seul ESP32 détecte le device, on considere que le divice est dans la piece de l'esp32 a la position de l'esp 32
 
