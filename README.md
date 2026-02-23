@@ -3,19 +3,19 @@ a ajouter
 ## 1)
 Fréquence : Toutes les 30 secondes, on analyse les données de la minute précédente.( on peut aussi passer a 2 minutes)
 
-Cas 1 : Un seul ESP32 détecte le device, on considere que le divice est dans la piece de l'esp32 a la position de l'esp 32
+### Cas 1 : Un seul ESP32 détecte le device, on considere que le divice est dans la piece de l'esp32 a la position de l'esp 32
 
-Cas 2 : Deux ESP32 détectent le device
+### Cas 2 : Deux ESP32 détectent le device
 
 Problème : L'intersection de deux cercles donne deux points possibles.
 
 Si on a l'historique de la position précédente, on choisit le point le plus proche de la dernière position connue.
 
-Cas 3 : Trois ESP32 (ou plus) détectent le device
+### Cas 3 : Trois ESP32 (ou plus) détectent le device
 
 Action : Trilatération
 
-Cas 4 : plus de 3 ESP32, on prend les 3 plus proche
+### Cas 4 : plus de 3 ESP32, on prend les 3 plus proche
 
 ## 2). Gestion des Étages (Axe Z)
 
@@ -23,9 +23,9 @@ z= 0 RDC
 
 z=1 etage 1 
 
-Règle de décision Z : L'étage ($z$) est défini par l'ESP32 qui possède le RSSI le plus fort (le plus proche).
+### Règle de décision Z : L'étage ($z$) est défini par l'ESP32 qui possède le RSSI le plus fort (le plus proche).
 
-Filtrage : Pour le calcul $(x, y)$, on ne sélectionne que les ESP32 appartenant à cet étage $z$. Si des ESP d'un autre étage captent le signal, on les ignore pour le calcul de position 2D afin de ne pas fausser les distances.
+### Filtrage : Pour le calcul $(x, y)$, on ne sélectionne que les ESP32 appartenant à cet étage $z$. Si des ESP d'un autre étage captent le signal, on les ignore pour le calcul de position 2D afin de ne pas fausser les distances.
 
 
 
