@@ -29,7 +29,7 @@ z=1 etage 1
 
 
 
-## 3) Ajout base de donnée influxdB
+## 3) Ajout base de donnée influxdB ( ne prenez pas 1h sur ça, si vous n'y arrivez pas je m'en occupe )
 
    -stockage des scan BLe ( realiser par NodeRed)
  
