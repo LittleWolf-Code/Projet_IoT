@@ -247,6 +247,7 @@
   const zoomOutBtn = document.getElementById('zoom-out-btn');
   const resetViewBtn = document.getElementById('reset-view-btn');
   const toggleGridBtn = document.getElementById('toggle-grid-btn');
+  let viewBoxRafId = 0;
 
   function cloneDefaultFloorPlans() {
     return defaultFloorPlans.map((plan) => ({ ...plan }));
@@ -308,7 +309,9 @@
   }
 
   function setCoordsMessage(message) {
-    mapCoords.textContent = message;
+    if (mapCoords.textContent !== message) {
+      mapCoords.textContent = message;
+    }
   }
 
   function resetViewport() {
@@ -334,6 +337,19 @@
       width,
       height
     };
+  }
+
+  function applyViewBox() {
+    const viewBox = getCurrentViewBox();
+    floorMap.setAttribute('viewBox', `${viewBox.x} ${viewBox.y} ${viewBox.width} ${viewBox.height}`);
+  }
+
+  function applyViewBoxNextFrame() {
+    if (viewBoxRafId) return;
+    viewBoxRafId = requestAnimationFrame(() => {
+      viewBoxRafId = 0;
+      applyViewBox();
+    });
   }
 
   function getPlanRect(planAspectRatio) {
@@ -476,9 +492,6 @@
     const floor = state.selectedFloor;
     const floorMeta = getFloorMeta(floor);
     ensureFloorAspect(floorMeta);
-
-    const viewBox = getCurrentViewBox();
-    floorMap.setAttribute('viewBox', `${viewBox.x} ${viewBox.y} ${viewBox.width} ${viewBox.height}`);
     floorMap.innerHTML = '';
 
     const ratio = state.floorAspectByZ[String(floor)] || (state.map.width / state.map.height);
@@ -585,6 +598,8 @@
           weight: 700
         });
       });
+
+    applyViewBox();
   }
 
   function renderDeviceTable() {
@@ -725,7 +740,7 @@
     state.viewport.x = focus.x - (relX * newWidth);
     state.viewport.y = focus.y - (relY * newHeight);
 
-    drawMap();
+    applyViewBox();
   }
 
   function zoomCentered(factor) {
@@ -762,7 +777,7 @@
   zoomOutBtn.addEventListener('click', () => zoomCentered(0.84));
   resetViewBtn.addEventListener('click', () => {
     resetViewport();
-    drawMap();
+    applyViewBox();
   });
   toggleGridBtn.addEventListener('click', () => {
     state.showGrid = !state.showGrid;
@@ -793,18 +808,20 @@
     updateHoverCoordinates(event);
     if (!state.pointer.active) return;
 
-    const viewBox = getCurrentViewBox();
+    const zoom = clamp(state.viewport.zoom, state.viewport.minZoom, state.viewport.maxZoom);
+    const viewWidth = state.map.width / zoom;
+    const viewHeight = state.map.height / zoom;
     const dxPx = event.clientX - state.pointer.startClientX;
     const dyPx = event.clientY - state.pointer.startClientY;
     if (Math.abs(dxPx) + Math.abs(dyPx) > 4) {
       state.pointer.moved = true;
     }
 
-    const dxMap = (dxPx / Math.max(1, floorMap.clientWidth)) * viewBox.width;
-    const dyMap = (dyPx / Math.max(1, floorMap.clientHeight)) * viewBox.height;
+    const dxMap = (dxPx / Math.max(1, floorMap.clientWidth)) * viewWidth;
+    const dyMap = (dyPx / Math.max(1, floorMap.clientHeight)) * viewHeight;
     state.viewport.x = state.pointer.startX - dxMap;
     state.viewport.y = state.pointer.startY - dyMap;
-    drawMap();
+    applyViewBoxNextFrame();
   });
 
   function stopDragging(event) {
@@ -825,7 +842,7 @@
   floorMap.addEventListener('pointercancel', stopDragging);
   floorMap.addEventListener('dblclick', () => {
     resetViewport();
-    drawMap();
+    applyViewBox();
   });
 
   floorMap.addEventListener('click', (event) => {

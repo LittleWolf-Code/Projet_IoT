@@ -820,7 +820,6 @@ tbody tr:last-child td {
 
 #floor-map .floor-plan-image {
   pointer-events: none;
-  filter: contrast(1.08) brightness(1.03);
 }
 
 #floor-map .map-text-halo {
