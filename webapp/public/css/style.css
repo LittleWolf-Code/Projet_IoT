@@ -829,6 +829,18 @@ tbody tr:last-child td {
   stroke-linejoin: round;
 }
 
+#floor-map .anchor-draggable {
+  cursor: move;
+}
+
+#floor-map .anchor-active {
+  filter: drop-shadow(0 0 4px rgba(6, 182, 212, 0.6));
+}
+
+#floor-map .zone-vertex-handle {
+  cursor: pointer;
+}
+
 .map-legend {
   display: flex;
   flex-wrap: wrap;
@@ -905,11 +917,13 @@ tbody tr:last-child td {
   display: grid;
   gap: 8px;
   grid-template-columns:
-    minmax(180px, 1.4fr)
-    minmax(84px, 0.6fr)
-    repeat(4, minmax(110px, 0.85fr))
+    minmax(180px, 1.5fr)
+    minmax(96px, 0.8fr)
+    minmax(96px, 0.75fr)
     64px
-    minmax(140px, 0.9fr);
+    minmax(150px, 1fr)
+    minmax(150px, 1fr)
+    minmax(110px, 0.8fr);
   align-items: stretch;
 }
 
@@ -947,9 +961,20 @@ tbody tr:last-child td {
 
 .zone-form-row .btn {
   width: 100%;
-  min-width: 140px;
+  min-width: 110px;
   white-space: nowrap;
   height: 44px;
+}
+
+.zone-editor-help {
+  margin-top: 10px;
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.zone-actions {
+  display: flex;
+  gap: 8px;
 }
 
 /* ============================================
@@ -985,10 +1010,10 @@ tbody tr:last-child td {
     grid-template-columns: 1fr;
   }
   .zone-form-row {
-    grid-template-columns: 1fr 1fr;
+    grid-template-columns: 1fr;
   }
   .zone-form-row .btn {
-    grid-column: 1 / -1;
+    min-width: 0;
   }
   #floor-map {
     height: 56vh;

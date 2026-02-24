@@ -96,6 +96,61 @@ function mergeDeep(base, override) {
   return result;
 }
 
+function toFiniteNumber(value) {
+  const num = Number(value);
+  return Number.isFinite(num) ? num : null;
+}
+
+function slugify(input) {
+  return String(input || '')
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '');
+}
+
+function normalizeZoneConfig(zone, index) {
+  if (!zone || typeof zone !== 'object') return null;
+
+  let points = [];
+  if (Array.isArray(zone.points) && zone.points.length >= 3) {
+    points = zone.points
+      .map((point) => ({ x: toFiniteNumber(point.x), y: toFiniteNumber(point.y) }))
+      .filter((point) => point.x !== null && point.y !== null);
+  } else {
+    const x = toFiniteNumber(zone.x);
+    const y = toFiniteNumber(zone.y);
+    const width = toFiniteNumber(zone.width);
+    const height = toFiniteNumber(zone.height);
+    if ([x, y, width, height].every((value) => value !== null)) {
+      points = [
+        { x, y },
+        { x: x + width, y },
+        { x: x + width, y: y + height },
+        { x, y: y + height }
+      ];
+    }
+  }
+
+  if (points.length < 3) return null;
+
+  const z = toFiniteNumber(zone.z);
+  if (z === null) return null;
+  const floor = Math.round(z);
+
+  const fallbackName = `Zone ${index + 1}`;
+  const name = String(zone.name || fallbackName);
+  const id = String(zone.id || `zone-${floor}-${slugify(name) || `n${index + 1}`}`);
+
+  return {
+    id,
+    name,
+    z: floor,
+    color: String(zone.color || '#3b82f6'),
+    points
+  };
+}
+
 function ensureConfigDefaults(config) {
   const merged = mergeDeep(DEFAULT_CONFIG, config || {});
 
@@ -127,7 +182,9 @@ function ensureConfigDefaults(config) {
       merged.map.floorPlans = DEFAULT_CONFIG.map.floorPlans.map((p) => ({ ...p }));
     }
   }
-  if (!Array.isArray(merged.zones)) merged.zones = [];
+  merged.zones = (Array.isArray(merged.zones) ? merged.zones : [])
+    .map((zone, index) => normalizeZoneConfig(zone, index))
+    .filter(Boolean);
 
   return merged;
 }
@@ -803,6 +860,46 @@ app.post('/api/devices', (req, res) => {
   res.status(201).json(device);
 });
 
+app.put('/api/devices/:mac', (req, res) => {
+  const mac = normalizeMac(req.params.mac);
+  const devices = loadDevices();
+  const idx = devices.findIndex((d) => normalizeMac(d.mac) === mac);
+  if (idx < 0) {
+    return res.status(404).json({ error: 'Device not found' });
+  }
+
+  const current = devices[idx];
+  const next = { ...current };
+  const payload = req.body || {};
+
+  if (payload.name !== undefined) {
+    const name = String(payload.name).trim();
+    if (!name) return res.status(400).json({ error: 'Device name cannot be empty' });
+    next.name = name;
+  }
+
+  if (payload.type !== undefined) {
+    next.type = String(payload.type || '').trim() || current.type || 'mote';
+  }
+
+  if (payload.x !== undefined) next.x = parseOptionalNumber(payload.x);
+  if (payload.y !== undefined) next.y = parseOptionalNumber(payload.y);
+  if (payload.z !== undefined) next.z = parseOptionalNumber(payload.z);
+
+  if (
+    (next.x !== null && !Number.isFinite(next.x))
+    || (next.y !== null && !Number.isFinite(next.y))
+    || (next.z !== null && !Number.isFinite(next.z))
+  ) {
+    return res.status(400).json({ error: 'Invalid coordinates' });
+  }
+
+  devices[idx] = next;
+  saveDevices(devices);
+  io.emit('devices:update', devices);
+  res.json(next);
+});
+
 app.delete('/api/devices/:mac', (req, res) => {
   const mac = normalizeMac(req.params.mac);
   let devices = loadDevices();
@@ -894,7 +991,8 @@ app.get('/api/positions', (req, res) => {
 
 app.post('/api/zones', (req, res) => {
   const { id, name, z, points, x, y, width, height, color } = req.body;
-  if (!name) return res.status(400).json({ error: 'Zone name is required' });
+  const zoneName = String(name || '').trim();
+  if (!zoneName) return res.status(400).json({ error: 'Zone name is required' });
   const floor = Number(z);
   if (!Number.isFinite(floor)) return res.status(400).json({ error: 'Zone floor (z) is required' });
 
@@ -926,7 +1024,7 @@ app.post('/api/zones', (req, res) => {
   const zoneId = id || `zone-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`;
   const zone = {
     id: zoneId,
-    name: String(name),
+    name: zoneName,
     z: floor,
     color: color || '#3b82f6',
     points: normalizedPoints
