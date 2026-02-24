@@ -13,6 +13,7 @@ const io = new Server(server);
 const PORT = 3000;
 const CONFIG_PATH = path.join(__dirname, 'config.json');
 const DEVICES_PATH = path.join(__dirname, 'devices.json');
+const PROJECT_ROOT = path.join(__dirname, '..');
 
 const POSITION_HISTORY_LIMIT = 500;
 const SCAN_BUFFER_LIMIT = 2000;
@@ -27,7 +28,11 @@ const DEFAULT_CONFIG = {
   },
   map: {
     width: 1000,
-    height: 700
+    height: 700,
+    floorPlans: [
+      { z: 0, label: 'RDC (1st floor)', image: '/api/floor-plan/0' },
+      { z: 1, label: 'R+1 (2nd floor)', image: '/api/floor-plan/1' }
+    ]
   },
   zones: [],
   influx: {
@@ -54,6 +59,19 @@ let mqttConnected = false;
 let mqttClient = null;
 let localizationTimer = null;
 let lastInfluxErrorAt = 0;
+
+// Prefer bundled assets, then fallback to project-root files provided by the team.
+const FLOOR_PLAN_CANDIDATES = {
+  0: [
+    path.join(__dirname, 'public', 'assets', 'maps', 'rdc.jpg'),
+    path.join(PROJECT_ROOT, 'rdc.jpg')
+  ],
+  1: [
+    path.join(__dirname, 'public', 'assets', 'maps', 'rplus1.jpg'),
+    path.join(__dirname, 'public', 'assets', 'maps', 'r+1.jpg'),
+    path.join(PROJECT_ROOT, 'r+1.jpg')
+  ]
+};
 
 // ============================================
 // CONFIG & DEVICES FILE HELPERS
@@ -93,6 +111,22 @@ function ensureConfigDefaults(config) {
 
   merged.map.width = Math.max(100, Number(merged.map.width) || 1000);
   merged.map.height = Math.max(100, Number(merged.map.height) || 700);
+  if (!Array.isArray(merged.map.floorPlans) || merged.map.floorPlans.length === 0) {
+    merged.map.floorPlans = DEFAULT_CONFIG.map.floorPlans.map((p) => ({ ...p }));
+  } else {
+    merged.map.floorPlans = merged.map.floorPlans
+      .map((plan) => ({
+        z: Number(plan.z),
+        label: String(plan.label || `Etage ${plan.z}`),
+        image: String(plan.image || '')
+      }))
+      .filter((plan) => Number.isFinite(plan.z))
+      .sort((a, b) => a.z - b.z);
+
+    if (merged.map.floorPlans.length === 0) {
+      merged.map.floorPlans = DEFAULT_CONFIG.map.floorPlans.map((p) => ({ ...p }));
+    }
+  }
   if (!Array.isArray(merged.zones)) merged.zones = [];
 
   return merged;
@@ -147,6 +181,14 @@ function parseOptionalNumber(value) {
   if (value === null || value === undefined || value === '') return null;
   const num = Number(value);
   return Number.isFinite(num) ? num : null;
+}
+
+function resolveFloorPlanPath(floor) {
+  const plans = FLOOR_PLAN_CANDIDATES[floor] || [];
+  for (const candidate of plans) {
+    if (fs.existsSync(candidate)) return candidate;
+  }
+  return null;
 }
 
 function getAnchorsByMac() {
@@ -713,6 +755,18 @@ setInterval(() => {
 // ============================================
 app.use(express.json());
 app.use(express.static(path.join(__dirname, 'public')));
+
+app.get('/api/floor-plan/:floor', (req, res) => {
+  const floor = Number(req.params.floor);
+  if (!Number.isFinite(floor)) {
+    return res.status(400).json({ error: 'Invalid floor' });
+  }
+  const floorPath = resolveFloorPlanPath(floor);
+  if (!floorPath) {
+    return res.status(404).json({ error: 'Floor plan not found' });
+  }
+  return res.sendFile(path.resolve(floorPath));
+});
 
 // ============================================
 // REST API - DEVICES

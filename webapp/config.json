@@ -11,7 +11,19 @@
   },
   "map": {
     "width": 1000,
-    "height": 700
+    "height": 700,
+    "floorPlans": [
+      {
+        "z": 0,
+        "label": "RDC (1st floor)",
+        "image": "/api/floor-plan/0"
+      },
+      {
+        "z": 1,
+        "label": "R+1 (2nd floor)",
+        "image": "/api/floor-plan/1"
+      }
+    ]
   },
   "zones": [],
   "influx": {
