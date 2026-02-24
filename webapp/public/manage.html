@@ -9,7 +9,6 @@
 </head>
 <body>
   <div class="app-container">
-    <!-- SIDEBAR -->
     <nav class="sidebar">
       <div class="sidebar-brand">
         <div class="brand-icon">📡</div>
@@ -56,14 +55,12 @@
       </div>
     </nav>
 
-    <!-- MAIN CONTENT -->
     <main class="main-content">
       <div class="page-header">
-        <h2>➕ Gestion des ESP32</h2>
-        <p>Ajouter ou supprimer des ESP32 du réseau</p>
+        <h2>Gestion des ESP32</h2>
+        <p>Ajout/suppression des ESP32 et configuration de leurs coordonnees (x, y, z).</p>
       </div>
 
-      <!-- ADD DEVICE FORM -->
       <div class="form-card" style="margin-bottom: 32px;">
         <h3 style="margin-bottom: 24px; font-size: 18px;">Ajouter un ESP32</h3>
         <form id="add-device-form">
@@ -77,21 +74,42 @@
               <input type="text" id="device-name" placeholder="Ex: Mote Salle 101" required>
             </div>
           </div>
-          <div class="form-group">
-            <label for="device-type">Type</label>
-            <select id="device-type">
-              <option value="mote">Mote (capteur)</option>
-              <option value="sink">Sink (passerelle)</option>
-            </select>
+
+          <div class="form-row">
+            <div class="form-group">
+              <label for="device-type">Type</label>
+              <select id="device-type">
+                <option value="mote">Mote (capteur)</option>
+                <option value="sink">Sink (passerelle)</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label for="device-z">Etage (z)</label>
+              <select id="device-z">
+                <option value="0">RDC (0)</option>
+                <option value="1">Etage 1 (1)</option>
+              </select>
+            </div>
           </div>
-          <button type="submit" class="btn btn-primary">➕ Ajouter l'ESP32</button>
+
+          <div class="form-row">
+            <div class="form-group">
+              <label for="device-x">Position X</label>
+              <input type="number" id="device-x" placeholder="Ex: 120" step="0.1">
+            </div>
+            <div class="form-group">
+              <label for="device-y">Position Y</label>
+              <input type="number" id="device-y" placeholder="Ex: 250" step="0.1">
+            </div>
+          </div>
+
+          <button type="submit" class="btn btn-primary">Ajouter ESP32</button>
         </form>
       </div>
 
-      <!-- REGISTERED DEVICES TABLE -->
       <div class="table-container">
         <div class="table-header">
-          <h3>ESP32 Enregistrés</h3>
+          <h3>ESP32 Enregistres</h3>
           <span class="badge" id="device-count-badge">0 appareils</span>
         </div>
         <table>
@@ -100,16 +118,17 @@
               <th>Nom</th>
               <th>Adresse MAC</th>
               <th>Type</th>
-              <th>Date d'ajout</th>
+              <th>Coordonnees</th>
+              <th>Date ajout</th>
               <th>Actions</th>
             </tr>
           </thead>
           <tbody id="devices-table-body">
             <tr>
-              <td colspan="5">
+              <td colspan="6">
                 <div class="empty-state">
-                  <div class="empty-icon">📋</div>
-                  <h3>Aucun ESP32 enregistré</h3>
+                  <div class="empty-icon">ESP</div>
+                  <h3>Aucun ESP32 enregistre</h3>
                   <p>Utilisez le formulaire ci-dessus pour ajouter un appareil</p>
                 </div>
               </td>
@@ -125,78 +144,92 @@
   <script src="/socket.io/socket.io.js"></script>
   <script src="/js/app.js"></script>
   <script>
-    // === Manage page logic ===
     const devicesTableBody = document.getElementById('devices-table-body');
     const addForm = document.getElementById('add-device-form');
 
     function updateDevicesTable(devices) {
-      document.getElementById('device-count-badge').textContent = devices.length + ' appareils';
+      document.getElementById('device-count-badge').textContent = `${devices.length} appareils`;
 
       if (devices.length === 0) {
-        devicesTableBody.innerHTML = `<tr><td colspan="5">
+        devicesTableBody.innerHTML = `<tr><td colspan="6">
           <div class="empty-state">
-            <div class="empty-icon">📋</div>
-            <h3>Aucun ESP32 enregistré</h3>
+            <div class="empty-icon">ESP</div>
+            <h3>Aucun ESP32 enregistre</h3>
             <p>Utilisez le formulaire ci-dessus pour ajouter un appareil</p>
           </div></td></tr>`;
         return;
       }
 
-      devicesTableBody.innerHTML = devices.map(d => {
-        const date = new Date(d.addedAt).toLocaleDateString('fr-FR', { 
-          day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' 
-        });
-        const typeLabel = d.type === 'sink' ? '🏠 Sink' : '📡 Mote';
+      devicesTableBody.innerHTML = devices.map((d) => {
+        const date = d.addedAt
+          ? new Date(d.addedAt).toLocaleDateString('fr-FR', {
+              day: '2-digit',
+              month: '2-digit',
+              year: 'numeric',
+              hour: '2-digit',
+              minute: '2-digit'
+            })
+          : '-';
+        const typeLabel = d.type === 'sink' ? 'Sink' : 'Mote';
+        const hasCoords = d.x !== null && d.x !== undefined && d.y !== null && d.y !== undefined && d.z !== null && d.z !== undefined;
+        const coords = hasCoords ? `x=${d.x}, y=${d.y}, z=${d.z}` : 'Non defini';
+
         return `<tr>
           <td><strong>${d.name}</strong></td>
           <td><span class="mac-address">${d.mac}</span></td>
           <td>${typeLabel}</td>
+          <td>${coords}</td>
           <td>${date}</td>
-          <td><button class="btn btn-danger btn-sm" onclick="deleteDevice('${d.mac}')">🗑️ Supprimer</button></td>
+          <td><button class="btn btn-danger btn-sm" onclick="deleteDevice('${d.mac}')">Supprimer</button></td>
         </tr>`;
       }).join('');
     }
 
     addForm.addEventListener('submit', async (e) => {
       e.preventDefault();
-      const mac = document.getElementById('device-mac').value.trim();
-      const name = document.getElementById('device-name').value.trim();
-      const type = document.getElementById('device-type').value;
+      const payload = {
+        mac: document.getElementById('device-mac').value.trim(),
+        name: document.getElementById('device-name').value.trim(),
+        type: document.getElementById('device-type').value,
+        z: Number(document.getElementById('device-z').value),
+        x: document.getElementById('device-x').value.trim() === '' ? null : Number(document.getElementById('device-x').value),
+        y: document.getElementById('device-y').value.trim() === '' ? null : Number(document.getElementById('device-y').value)
+      };
 
       try {
         const res = await fetch('/api/devices', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ mac, name, type })
+          body: JSON.stringify(payload)
         });
         const data = await res.json();
-        if (res.ok) {
-          showToast('✅ ESP32 ajouté avec succès', 'success');
-          addForm.reset();
-        } else {
-          showToast('❌ ' + data.error, 'error');
+        if (!res.ok) {
+          showToast(data.error || 'Erreur ajout', 'error');
+          return;
         }
+        showToast('ESP32 ajoute', 'success');
+        addForm.reset();
+        document.getElementById('device-z').value = '0';
       } catch (err) {
-        showToast('❌ Erreur réseau', 'error');
+        showToast('Erreur reseau', 'error');
       }
     });
 
     async function deleteDevice(mac) {
       if (!confirm('Supprimer cet ESP32 ?')) return;
       try {
-        const res = await fetch('/api/devices/' + encodeURIComponent(mac), { method: 'DELETE' });
+        const res = await fetch(`/api/devices/${encodeURIComponent(mac)}`, { method: 'DELETE' });
         if (res.ok) {
-          showToast('🗑️ ESP32 supprimé', 'success');
+          showToast('ESP32 supprime', 'success');
         } else {
-          showToast('❌ Erreur lors de la suppression', 'error');
+          showToast('Erreur suppression', 'error');
         }
       } catch (err) {
-        showToast('❌ Erreur réseau', 'error');
+        showToast('Erreur reseau', 'error');
       }
     }
 
-    // Load initial data
-    fetch('/api/devices').then(r => r.json()).then(updateDevicesTable);
+    fetch('/api/devices').then((r) => r.json()).then(updateDevicesTable);
     socket.on('devices:update', updateDevicesTable);
   </script>
 </body>

@@ -4,12 +4,11 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>IoT Dashboard - Carte</title>
-  <meta name="description" content="Real-time location map">
+  <meta name="description" content="Real-time BLE location map">
   <link rel="stylesheet" href="/css/style.css">
 </head>
 <body>
   <div class="app-container">
-    <!-- SIDEBAR -->
     <nav class="sidebar">
       <div class="sidebar-brand">
         <div class="brand-icon">📡</div>
@@ -56,13 +55,134 @@
       </div>
     </nav>
 
-    <!-- MAIN CONTENT -->
     <main class="main-content">
-      <div class="placeholder-page">
-        <div class="placeholder-icon">🗺️</div>
-        <h2>Carte en Temps Réel</h2>
-        <p>Cette fonctionnalité est en cours de développement.</p>
-        <p style="margin-top: 12px; color: var(--text-muted);">La carte permettra de visualiser les déplacements des personnes en temps réel<br>basé sur la triangulation des signaux BLE captés par les motes ESP32.</p>
+      <div class="page-header">
+        <h2>Carte Temps Reel</h2>
+        <p>Localisation BLE (x, y, z), zones (salles), et historique de deplacement.</p>
+      </div>
+
+      <div class="map-toolbar">
+        <div class="toolbar-group">
+          <label for="floor-filter">Etage</label>
+          <select id="floor-filter">
+            <option value="0">RDC (z=0)</option>
+            <option value="1">Etage 1 (z=1)</option>
+          </select>
+        </div>
+        <div class="toolbar-group">
+          <label for="analysis-every">Analyse</label>
+          <select id="analysis-every">
+            <option value="30">Toutes les 30s</option>
+            <option value="120">Toutes les 120s</option>
+          </select>
+        </div>
+        <div class="toolbar-group">
+          <label for="window-sec">Fenetre</label>
+          <select id="window-sec">
+            <option value="60">60s</option>
+            <option value="120">120s</option>
+          </select>
+        </div>
+        <button class="btn btn-primary" id="save-localization-btn">Enregistrer</button>
+      </div>
+
+      <div class="stats-grid">
+        <div class="stat-card">
+          <div class="stat-icon">LOC</div>
+          <div class="stat-value" id="stat-localized">0</div>
+          <div class="stat-label">Devices localises</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-icon">Z</div>
+          <div class="stat-value" id="stat-zones">0</div>
+          <div class="stat-label">Zones de l'etage</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-icon">ESP</div>
+          <div class="stat-value" id="stat-anchors">0</div>
+          <div class="stat-label">ESP32 ancres</div>
+        </div>
+      </div>
+
+      <div class="map-layout">
+        <section class="table-container map-panel">
+          <div class="table-header">
+            <h3>Plan</h3>
+            <span class="badge" id="map-badge">Etage 0</span>
+          </div>
+          <div class="map-shell">
+            <svg id="floor-map" viewBox="0 0 1000 700" preserveAspectRatio="xMidYMid meet"></svg>
+          </div>
+          <div class="map-legend">
+            <span><i class="legend-box zone"></i> Zone</span>
+            <span><i class="legend-box anchor"></i> ESP32</span>
+            <span><i class="legend-box device"></i> Device BLE</span>
+          </div>
+        </section>
+
+        <section class="map-side">
+          <div class="table-container side-block">
+            <div class="table-header">
+              <h3>Devices localises</h3>
+              <span class="badge" id="device-count-badge">0</span>
+            </div>
+            <table>
+              <thead>
+                <tr>
+                  <th>Device</th>
+                  <th>Salle</th>
+                  <th>Maj</th>
+                </tr>
+              </thead>
+              <tbody id="localized-devices-body"></tbody>
+            </table>
+          </div>
+
+          <div class="table-container side-block">
+            <div class="table-header">
+              <h3>Historique device</h3>
+              <span class="badge" id="history-device-label">Aucun</span>
+            </div>
+            <div class="history-list" id="history-list"></div>
+          </div>
+        </section>
+      </div>
+
+      <div class="map-layout bottom-layout">
+        <section class="table-container map-panel">
+          <div class="table-header">
+            <h3>Zones (salles)</h3>
+            <span class="badge" id="zone-count-badge">0</span>
+          </div>
+          <div class="zone-editor">
+            <form id="zone-form">
+              <div class="zone-form-row">
+                <input type="text" id="zone-name" placeholder="Nom salle (ex: B101)" required>
+                <select id="zone-floor" required>
+                  <option value="0">z=0</option>
+                  <option value="1">z=1</option>
+                </select>
+                <input type="number" id="zone-x" placeholder="x" required>
+                <input type="number" id="zone-y" placeholder="y" required>
+                <input type="number" id="zone-width" placeholder="largeur" required min="1">
+                <input type="number" id="zone-height" placeholder="hauteur" required min="1">
+                <input type="color" id="zone-color" value="#3b82f6">
+                <button class="btn btn-success" type="submit">Ajouter zone</button>
+              </div>
+            </form>
+          </div>
+          <table>
+            <thead>
+              <tr>
+                <th>Salle</th>
+                <th>Etage</th>
+                <th>Coordonnees</th>
+                <th>Action</th>
+              </tr>
+            </thead>
+            <tbody id="zones-table-body"></tbody>
+          </table>
+        </section>
       </div>
     </main>
   </div>
@@ -71,5 +191,369 @@
 
   <script src="/socket.io/socket.io.js"></script>
   <script src="/js/app.js"></script>
+  <script>
+    const state = {
+      map: { width: 1000, height: 700 },
+      localization: { analysisEverySec: 30, windowSec: 60 },
+      zones: [],
+      anchors: [],
+      positions: {},
+      selectedFloor: 0,
+      selectedDevice: null,
+      selectedHistory: null
+    };
+
+    const floorFilter = document.getElementById('floor-filter');
+    const analysisEvery = document.getElementById('analysis-every');
+    const windowSec = document.getElementById('window-sec');
+    const floorMap = document.getElementById('floor-map');
+    const deviceBody = document.getElementById('localized-devices-body');
+    const zonesBody = document.getElementById('zones-table-body');
+    const historyList = document.getElementById('history-list');
+
+    function fmtDuration(totalSec) {
+      const sec = Math.max(0, Number(totalSec) || 0);
+      const h = Math.floor(sec / 3600);
+      const m = Math.floor((sec % 3600) / 60);
+      if (h > 0) return `${h}h ${m}min`;
+      return `${m}min`;
+    }
+
+    function fmtPoint(point) {
+      return `(${Math.round(point.x)}, ${Math.round(point.y)})`;
+    }
+
+    function updateStats() {
+      const floor = state.selectedFloor;
+      const positions = Object.values(state.positions).filter((p) => Number(p.z) === Number(floor));
+      const zones = state.zones.filter((z) => Number(z.z) === Number(floor));
+      const anchors = state.anchors.filter((a) => Number(a.z) === Number(floor));
+
+      document.getElementById('stat-localized').textContent = positions.length;
+      document.getElementById('stat-zones').textContent = zones.length;
+      document.getElementById('stat-anchors').textContent = anchors.length;
+      document.getElementById('map-badge').textContent = `Etage ${floor}`;
+      document.getElementById('zone-count-badge').textContent = String(state.zones.length);
+    }
+
+    function drawGrid(svg, width, height) {
+      const step = 100;
+      for (let x = 0; x <= width; x += step) {
+        const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+        line.setAttribute('x1', x);
+        line.setAttribute('y1', 0);
+        line.setAttribute('x2', x);
+        line.setAttribute('y2', height);
+        line.setAttribute('stroke', 'rgba(148, 163, 184, 0.15)');
+        line.setAttribute('stroke-width', '1');
+        svg.appendChild(line);
+      }
+      for (let y = 0; y <= height; y += step) {
+        const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+        line.setAttribute('x1', 0);
+        line.setAttribute('y1', y);
+        line.setAttribute('x2', width);
+        line.setAttribute('y2', y);
+        line.setAttribute('stroke', 'rgba(148, 163, 184, 0.15)');
+        line.setAttribute('stroke-width', '1');
+        svg.appendChild(line);
+      }
+    }
+
+    function drawMap() {
+      const floor = state.selectedFloor;
+      floorMap.setAttribute('viewBox', `0 0 ${state.map.width} ${state.map.height}`);
+      floorMap.innerHTML = '';
+      drawGrid(floorMap, state.map.width, state.map.height);
+
+      const floorZones = state.zones.filter((z) => Number(z.z) === Number(floor));
+      floorZones.forEach((zone) => {
+        const polygon = document.createElementNS('http://www.w3.org/2000/svg', 'polygon');
+        const points = zone.points.map((p) => `${p.x},${p.y}`).join(' ');
+        polygon.setAttribute('points', points);
+        polygon.setAttribute('fill', `${zone.color || '#3b82f6'}22`);
+        polygon.setAttribute('stroke', zone.color || '#3b82f6');
+        polygon.setAttribute('stroke-width', '2');
+        floorMap.appendChild(polygon);
+
+        const cx = zone.points.reduce((acc, p) => acc + p.x, 0) / zone.points.length;
+        const cy = zone.points.reduce((acc, p) => acc + p.y, 0) / zone.points.length;
+        const label = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+        label.setAttribute('x', cx);
+        label.setAttribute('y', cy);
+        label.setAttribute('fill', '#f1f5f9');
+        label.setAttribute('font-size', '14');
+        label.setAttribute('font-weight', '700');
+        label.setAttribute('text-anchor', 'middle');
+        label.textContent = zone.name;
+        floorMap.appendChild(label);
+      });
+
+      state.anchors
+        .filter((a) => Number(a.z) === Number(floor))
+        .forEach((a) => {
+          const rect = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+          rect.setAttribute('x', a.x - 8);
+          rect.setAttribute('y', a.y - 8);
+          rect.setAttribute('width', 16);
+          rect.setAttribute('height', 16);
+          rect.setAttribute('fill', '#06b6d4');
+          rect.setAttribute('stroke', '#e2e8f0');
+          rect.setAttribute('stroke-width', '1.5');
+          floorMap.appendChild(rect);
+
+          const text = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+          text.setAttribute('x', a.x + 12);
+          text.setAttribute('y', a.y - 10);
+          text.setAttribute('fill', '#06b6d4');
+          text.setAttribute('font-size', '12');
+          text.textContent = a.name;
+          floorMap.appendChild(text);
+        });
+
+      Object.values(state.positions)
+        .filter((p) => Number(p.z) === Number(floor))
+        .forEach((p) => {
+          const circle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+          circle.setAttribute('cx', p.x);
+          circle.setAttribute('cy', p.y);
+          circle.setAttribute('r', state.selectedDevice === p.name ? 9 : 7);
+          circle.setAttribute('fill', state.selectedDevice === p.name ? '#10b981' : '#f59e0b');
+          circle.setAttribute('stroke', '#ffffff');
+          circle.setAttribute('stroke-width', '2');
+          floorMap.appendChild(circle);
+
+          const label = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+          label.setAttribute('x', p.x + 10);
+          label.setAttribute('y', p.y + 4);
+          label.setAttribute('fill', '#f8fafc');
+          label.setAttribute('font-size', '12');
+          label.textContent = `${p.name}${p.room ? ` (${p.room})` : ''}`;
+          floorMap.appendChild(label);
+        });
+    }
+
+    function renderDeviceTable() {
+      const floor = state.selectedFloor;
+      const positions = Object.values(state.positions)
+        .filter((p) => Number(p.z) === Number(floor))
+        .sort((a, b) => b.updatedAt - a.updatedAt);
+
+      document.getElementById('device-count-badge').textContent = String(positions.length);
+
+      if (positions.length === 0) {
+        deviceBody.innerHTML = `<tr><td colspan="3"><div class="empty-state"><h3>Aucun device localise</h3><p>Verifier les coordonnees ESP32 et les scans BLE.</p></div></td></tr>`;
+        return;
+      }
+
+      deviceBody.innerHTML = positions.map((p) => {
+        const activeClass = state.selectedDevice === p.name ? 'row-active' : '';
+        const room = p.room || 'Hors zone';
+        const ago = timeSince(p.updatedAt);
+        return `<tr class="clickable-row ${activeClass}" data-device="${p.name}">
+          <td><strong>${p.name}</strong><br><small>${fmtPoint(p)}</small></td>
+          <td>${room}</td>
+          <td>${ago}</td>
+        </tr>`;
+      }).join('');
+    }
+
+    function renderZonesTable() {
+      if (state.zones.length === 0) {
+        zonesBody.innerHTML = `<tr><td colspan="4"><div class="empty-state"><h3>Aucune zone</h3><p>Ajoutez des salles pour suivre la presence des devices.</p></div></td></tr>`;
+        return;
+      }
+      zonesBody.innerHTML = state.zones.map((z) => {
+        const p0 = z.points && z.points[0] ? z.points[0] : { x: 0, y: 0 };
+        const p2 = z.points && z.points[2] ? z.points[2] : p0;
+        const w = Math.round(Math.abs((p2.x || 0) - (p0.x || 0)));
+        const h = Math.round(Math.abs((p2.y || 0) - (p0.y || 0)));
+        return `<tr>
+          <td><strong>${z.name}</strong></td>
+          <td>${z.z}</td>
+          <td>x=${Math.round(p0.x)}, y=${Math.round(p0.y)}, w=${w}, h=${h}</td>
+          <td><button class="btn btn-danger btn-sm delete-zone-btn" data-zone-id="${z.id}">Supprimer</button></td>
+        </tr>`;
+      }).join('');
+    }
+
+    async function loadHistory(deviceName) {
+      try {
+        const res = await fetch(`/api/device-history/${encodeURIComponent(deviceName)}`);
+        const data = await res.json();
+        state.selectedHistory = data;
+        renderHistory();
+      } catch (err) {
+        showToast('Erreur chargement historique', 'error');
+      }
+    }
+
+    function renderHistory() {
+      const selected = state.selectedHistory;
+      const label = document.getElementById('history-device-label');
+      if (!state.selectedDevice || !selected) {
+        label.textContent = 'Aucun';
+        historyList.innerHTML = `<div class="empty-state"><h3>Selectionnez un device</h3><p>Cliquez sur une ligne pour afficher les durees par salle.</p></div>`;
+        return;
+      }
+
+      label.textContent = state.selectedDevice;
+      const stays = selected.stays || [];
+      if (stays.length === 0) {
+        historyList.innerHTML = `<div class="empty-state"><h3>Aucun historique</h3></div>`;
+        return;
+      }
+
+      historyList.innerHTML = stays
+        .slice()
+        .reverse()
+        .map((s) => {
+          const start = new Date(s.start).toLocaleTimeString('fr-FR');
+          const end = new Date(s.end).toLocaleTimeString('fr-FR');
+          return `<div class="history-item">
+            <div><strong>${s.room || 'Hors zone'}</strong> - ${fmtDuration(s.durationSec)}</div>
+            <small>${start} -> ${end}${s.ongoing ? ' (en cours)' : ''}</small>
+          </div>`;
+        }).join('');
+    }
+
+    async function loadMapState() {
+      try {
+        const res = await fetch('/api/map-state');
+        const data = await res.json();
+        state.map = data.map || state.map;
+        state.localization = data.localization || state.localization;
+        state.zones = data.zones || [];
+        state.anchors = data.anchors || [];
+        state.positions = data.positions || {};
+
+        analysisEvery.value = String(state.localization.analysisEverySec || 30);
+        windowSec.value = String(state.localization.windowSec || 60);
+        updateStats();
+        drawMap();
+        renderDeviceTable();
+        renderZonesTable();
+      } catch (err) {
+        showToast('Erreur chargement carte', 'error');
+      }
+    }
+
+    floorFilter.addEventListener('change', () => {
+      state.selectedFloor = Number(floorFilter.value);
+      document.getElementById('zone-floor').value = String(state.selectedFloor);
+      updateStats();
+      drawMap();
+      renderDeviceTable();
+    });
+
+    document.getElementById('save-localization-btn').addEventListener('click', async () => {
+      try {
+        const payload = {
+          analysisEverySec: Number(analysisEvery.value),
+          windowSec: Number(windowSec.value)
+        };
+        const res = await fetch('/api/localization/settings', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+        const data = await res.json();
+        if (!res.ok) {
+          showToast(data.error || 'Erreur sauvegarde', 'error');
+          return;
+        }
+        state.localization = data.localization;
+        showToast('Parametres de localisation enregistres', 'success');
+      } catch (err) {
+        showToast('Erreur reseau', 'error');
+      }
+    });
+
+    document.getElementById('zone-form').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const payload = {
+        name: document.getElementById('zone-name').value.trim(),
+        z: Number(document.getElementById('zone-floor').value),
+        x: Number(document.getElementById('zone-x').value),
+        y: Number(document.getElementById('zone-y').value),
+        width: Number(document.getElementById('zone-width').value),
+        height: Number(document.getElementById('zone-height').value),
+        color: document.getElementById('zone-color').value
+      };
+
+      try {
+        const res = await fetch('/api/zones', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+        const data = await res.json();
+        if (!res.ok) {
+          showToast(data.error || 'Erreur creation zone', 'error');
+          return;
+        }
+        showToast('Zone ajoutee', 'success');
+        e.target.reset();
+        document.getElementById('zone-color').value = '#3b82f6';
+        document.getElementById('zone-floor').value = String(state.selectedFloor);
+      } catch (err) {
+        showToast('Erreur reseau', 'error');
+      }
+    });
+
+    zonesBody.addEventListener('click', async (e) => {
+      const btn = e.target.closest('.delete-zone-btn');
+      if (!btn) return;
+      const zoneId = btn.getAttribute('data-zone-id');
+      if (!zoneId) return;
+      if (!confirm('Supprimer cette zone ?')) return;
+
+      try {
+        const res = await fetch(`/api/zones/${encodeURIComponent(zoneId)}`, { method: 'DELETE' });
+        if (!res.ok) {
+          showToast('Suppression impossible', 'error');
+          return;
+        }
+        showToast('Zone supprimee', 'success');
+      } catch (err) {
+        showToast('Erreur reseau', 'error');
+      }
+    });
+
+    deviceBody.addEventListener('click', (e) => {
+      const row = e.target.closest('tr[data-device]');
+      if (!row) return;
+      const deviceName = row.getAttribute('data-device');
+      if (!deviceName) return;
+      state.selectedDevice = deviceName;
+      renderDeviceTable();
+      drawMap();
+      loadHistory(deviceName);
+    });
+
+    socket.on('position:update', (positions) => {
+      state.positions = positions || {};
+      updateStats();
+      drawMap();
+      renderDeviceTable();
+      if (state.selectedDevice) {
+        loadHistory(state.selectedDevice);
+      }
+    });
+
+    socket.on('zones:update', (zones) => {
+      state.zones = Array.isArray(zones) ? zones : [];
+      updateStats();
+      drawMap();
+      renderZonesTable();
+    });
+
+    socket.on('devices:update', () => {
+      loadMapState();
+    });
+
+    loadMapState();
+    renderHistory();
+  </script>
 </body>
 </html>

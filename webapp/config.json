@@ -1,6 +1,24 @@
 {
   "mqtt": {
-    "broker": "192.168.1.21",
+    "broker": "172.18.32.43",
     "port": 1883
+  },
+  "localization": {
+    "analysisEverySec": 30,
+    "windowSec": 60,
+    "txPower": -59,
+    "pathLossExponent": 2
+  },
+  "map": {
+    "width": 1000,
+    "height": 700
+  },
+  "zones": [],
+  "influx": {
+    "enabled": false,
+    "url": "http://127.0.0.1:8086",
+    "org": "",
+    "bucket": "",
+    "token": ""
   }
 }
