@@ -45,4 +45,12 @@ z=1 etage 1
     
 ## 6) etape facultative, pouvoir selectionner le divice et pouvoir suivre le chemin du divice
 
+# a rajouter 
+
+## 0) reduction des lag de l'application
+
+## 1) possibiliter de drag and drop et de deplacer les mote sur la carte
+
+## 2) possibiliter d'ajout des salles, en definisant le nombre de point et de les deplacer pour creer un espace / enclot, 
+
 
